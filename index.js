@@ -1,82 +1,90 @@
-import TelegramBot from "node-telegram-bot-api";
-import mongoose from "mongoose";
+require("dotenv").config();
+const TelegramBot = require("node-telegram-bot-api");
 
-// ===== VARIABLES DE ENTORNO =====
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const MONGO_URL = process.env.MONGO_URL;
-const CHANNEL_ID = process.env.CHANNEL_ID;
-
-// ===== VALIDACIONES =====
-if (!BOT_TOKEN) {
-  console.error("❌ BOT_TOKEN no definido");
-  process.exit(1);
+// ===== VALIDACIONES BÁSICAS =====
+if (!process.env.TOKEN_BOT) {
+  throw new Error("Falta TOKEN_BOT");
+}
+if (!process.env.CHANNEL_ID) {
+  throw new Error("Falta CHANNEL_ID");
 }
 
-if (!MONGO_URL) {
-  console.error("❌ MONGO_URL no definido");
-  process.exit(1);
-}
+// ===== CREAR BOT =====
+const bot = new TelegramBot(process.env.TOKEN_BOT, {
+  polling: true,
+});
 
-if (!CHANNEL_ID) {
-  console.error("⚠️ CHANNEL_ID no definido (el bot arrancará pero no publicará)");
-}
+// ===== LOG DE ARRANQUE =====
+console.log("🤖 Bot iniciando...");
 
-// ===== MONGODB =====
-mongoose.connect(MONGO_URL)
-  .then(() => console.log("✅ Conectado a MongoDB"))
-  .catch(err => {
-    console.error("❌ Error MongoDB:", err.message);
-    process.exit(1);
-  });
-
-// ===== TELEGRAM BOT =====
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
-
+// ===== PRUEBA DIRECTA AL INICIAR (MUY IMPORTANTE) =====
 bot.on("polling_error", (err) => {
   console.error("Polling error:", err.message);
 });
 
-// ===== COMANDOS =====
-
-// /start
-bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(
-    msg.chat.id,
-    "🤖 Bot P2P activo\n\nUsa /help para ver comandos"
-  );
-});
-
-// /help
-bot.onText(/\/help/, (msg) => {
-  bot.sendMessage(
-    msg.chat.id,
-    "📌 Comandos disponibles:\n" +
-    "/start – Iniciar bot\n" +
-    "/help – Ayuda\n" +
-    "/post <mensaje> – Publicar en el canal"
-  );
-});
-
-// /post <mensaje>
-bot.onText(/\/post (.+)/, async (msg, match) => {
-  if (!CHANNEL_ID) {
-    return bot.sendMessage(msg.chat.id, "❌ CHANNEL_ID no configurado");
+setTimeout(async () => {
+  try {
+    await bot.sendMessage(
+      process.env.CHANNEL_ID,
+      "✅ Prueba directa: el bot puede escribir en el canal"
+    );
+    console.log("✅ Mensaje de prueba enviado al canal");
+  } catch (err) {
+    console.error(
+      "❌ Error prueba directa:",
+      err.response?.body || err.message
+    );
   }
+}, 5000);
 
+// ===== /start =====
+bot.onText(/\/start/, async (msg) => {
+  await bot.sendMessage(
+    msg.chat.id,
+    "🤖 Bot P2P activo\n\nUsa /post <mensaje> para publicar en el canal"
+  );
+});
+
+// ===== /help =====
+bot.onText(/\/help/, async (msg) => {
+  await bot.sendMessage(
+    msg.chat.id,
+    "📌 Comandos disponibles:\n\n" +
+      "/post <mensaje> → Publicar en el canal P2P\n" +
+      "/help → Ver ayuda"
+  );
+});
+
+// ===== /post =====
+bot.onText(/\/post (.+)/s, async (msg, match) => {
+  const chatId = msg.chat.id;
   const text = match[1];
 
   try {
     await bot.sendMessage(
-      CHANNEL_ID,
-      `📢 *Nueva publicación P2P*\n\n${text}`,
-      { parse_mode: "Markdown" }
+      process.env.CHANNEL_ID,
+      "📢 Nueva publicación P2P\n\n" + text
     );
 
-    bot.sendMessage(msg.chat.id, "✅ Mensaje enviado al canal");
+    await bot.sendMessage(chatId, "✅ Mensaje enviado al canal");
   } catch (err) {
-    console.error("❌ Error al publicar:", err.message);
-    bot.sendMessage(msg.chat.id, "❌ Error al publicar en el canal");
+    console.error(
+      "❌ Error al publicar:",
+      err.response?.body || err.message
+    );
+
+    await bot.sendMessage(
+      chatId,
+      "❌ Error al publicar en el canal\n\n" +
+        (err.response?.body?.description || err.message)
+    );
   }
 });
 
-console.log("🚀 Bot iniciado y escuchando Telegram");
+// ===== MENSAJE SIN TEXTO =====
+bot.onText(/\/post$/, async (msg) => {
+  await bot.sendMessage(
+    msg.chat.id,
+    "⚠️ Uso correcto:\n/post <mensaje>"
+  );
+});
