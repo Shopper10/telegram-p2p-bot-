@@ -14,7 +14,7 @@ const client = new MongoClient(process.env.MONGO_URL);
 await client.connect();
 console.log("🟢 Conectado a MongoDB");
 
-const db = client.db("test");
+const db = client.db();
 const orders = db.collection("orders");
 
 // ================== ESTADO TEMPORAL ==================
