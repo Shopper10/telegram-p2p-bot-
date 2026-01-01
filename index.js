@@ -94,3 +94,64 @@ Método: Nequi
     bot.sendMessage(msg.chat.id, '❌ Error al publicar en el canal');
   }
 });
+// ===== FLUJO /sell =====
+const sellSteps = new Map();
+
+bot.onText(/\/sell/, (msg) => {
+  const chatId = msg.chat.id;
+
+  sellSteps.set(chatId, { step: 1 });
+
+  bot.sendMessage(chatId, "💲 Venta P2P\n\nIngresa el MONTO MÍNIMO en COP:");
+});
+
+bot.on("message", async (msg) => {
+  const chatId = msg.chat.id;
+  if (!sellSteps.has(chatId)) return;
+
+  const data = sellSteps.get(chatId);
+  if (!msg.text || msg.text.startsWith("/")) return;
+
+  // PASO 1: mínimo
+  if (data.step === 1) {
+    data.min = msg.text;
+    data.step = 2;
+    return bot.sendMessage(chatId, "Ingresa el MONTO MÁXIMO en COP:");
+  }
+
+  // PASO 2: máximo
+  if (data.step === 2) {
+    data.max = msg.text;
+    data.step = 3;
+    return bot.sendMessage(chatId, "Método de pago (Ej: Nequi):");
+  }
+
+  // PASO 3: pago
+  if (data.step === 3) {
+    data.payment = msg.text;
+    data.step = 4;
+    return bot.sendMessage(chatId, "Porcentaje sobre yadio.io (Ej: 2):");
+  }
+
+  // PASO 4: tasa
+  if (data.step === 4) {
+    data.percent = msg.text;
+    data.step = 5;
+
+    return bot.sendMessage(
+      chatId,
+      `✅ CONFIRMA LA ORDEN:\n\n` +
+      `Monto: ${data.min} - ${data.max} COP\n` +
+      `Pago: ${data.payment}\n` +
+      `Tasa: yadio.io +${data.percent}%\n\n` +
+      `Escribe CONFIRMAR para publicar`
+    );
+  }
+
+  // PASO 5: confirmar
+  if (data.step === 5 && msg.text.toLowerCase() === "confirmar") {
+    sellSteps.delete(chatId);
+
+    return bot.sendMessage(chatId, "✅ Orden registrada (siguiente paso: publicar)");
+  }
+});
