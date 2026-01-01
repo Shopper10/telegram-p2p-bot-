@@ -1,180 +1,123 @@
-require('dotenv').config();
-const TelegramBot = require('node-telegram-bot-api');
-const { MongoClient } = require('mongodb');
+import TelegramBot from "node-telegram-bot-api";
+import { MongoClient } from "mongodb";
 
-/* ======================
-   VARIABLES DE ENTORNO
-====================== */
-const TOKEN = process.env.TOKEN_BOT;
-const MONGO_URL = process.env.MONGO_URL;
-const CHANNEL_ID = process.env.ID_DEL_CANAL;
+// ================== VALIDACIONES ==================
+if (!process.env.TOKEN_BOT) throw new Error("Falta TOKEN_BOT");
+if (!process.env.MONGO_URL) throw new Error("Falta MONGO_URL");
+if (!process.env.ID_DEL_CANAL) throw new Error("Falta ID_DEL_CANAL");
 
-if (!TOKEN) throw new Error('Falta TOKEN_BOT');
-if (!MONGO_URL) throw new Error('Falta MONGO_URL');
-if (!CHANNEL_ID) throw new Error('Falta ID_DEL_CANAL');
+// ================== BOT ==================
+const bot = new TelegramBot(process.env.TOKEN_BOT, { polling: true });
 
-/* ======================
-   BOT
-====================== */
-const bot = new TelegramBot(TOKEN, { polling: true });
-console.log('🤖 Bot iniciado');
+// ================== MONGO ==================
+const client = new MongoClient(process.env.MONGO_URL);
+await client.connect();
+console.log("🟢 Conectado a MongoDB");
 
-/* ======================
-   MONGODB
-====================== */
-const client = new MongoClient(MONGO_URL);
-async function connectDB() {
-  await client.connect();
-  console.log('🟢 Conectado a MongoDB');
-}
-connectDB();
+const db = client.db("test");
+const orders = db.collection("orders");
 
-/* ======================
-   COMANDOS BÁSICOS
-====================== */
-bot.onText(/\/start/, (msg) => {
+// ================== ESTADO TEMPORAL ==================
+const sessions = {};
+
+// ================== HELP ==================
+bot.onText(/\/start|\/help/, (msg) => {
   bot.sendMessage(
     msg.chat.id,
-    `🤖 Bot P2P activo
+    `🤖 *Bot P2P activo*
 
 Comandos:
 /sell → Crear orden de venta
-/buy → Crear orden de compra`
+/buy → Crear orden de compra`,
+    { parse_mode: "Markdown" }
   );
 });
 
-bot.onText(/\/help/, (msg) => {
-  bot.sendMessage(
-    msg.chat.id,
-    `/sell → Crear orden de venta
-/buy → Crear orden de compra`
-  );
-});
-
-/* ======================
-   FLUJO /SELL PASO A PASO
-====================== */
-const sellSteps = new Map();
-
+// ================== SELL ==================
 bot.onText(/\/sell/, (msg) => {
-  const chatId = msg.chat.id;
-  sellSteps.set(chatId, { step: 1 });
-
-  bot.sendMessage(chatId, '💲 Venta P2P\n\nIngresa el MONTO MÍNIMO en COP:');
+  sessions[msg.chat.id] = { type: "SELL", step: 1 };
+  bot.sendMessage(msg.chat.id, "💲 Activo (ej: USDT Polygon)");
 });
 
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  if (!sellSteps.has(chatId)) return;
-  if (!msg.text || msg.text.startsWith('/')) return;
+// ================== BUY ==================
+bot.onText(/\/buy/, (msg) => {
+  sessions[msg.chat.id] = { type: "BUY", step: 1 };
+  bot.sendMessage(msg.chat.id, "💲 Activo (ej: USDT Polygon)");
+});
 
-  const data = sellSteps.get(chatId);
-
-  // Paso 1: mínimo
-  if (data.step === 1) {
-    data.min = msg.text;
-    data.step = 2;
-    return bot.sendMessage(chatId, 'Ingresa el MONTO MÁXIMO en COP:');
-  }
-
-  // Paso 2: máximo
-  if (data.step === 2) {
-    data.max = msg.text;
-    data.step = 3;
-    return bot.sendMessage(chatId, 'Método de pago (ej: Nequi):');
-  }
-
-  // Paso 3: método de pago
-  if (data.step === 3) {
-    data.payment = msg.text;
-    data.step = 4;
-    return bot.sendMessage(chatId, 'Porcentaje sobre yadio.io (ej: 2):');
-  }
-
-  // Paso 4: tasa
-  if (data.step === 4) {
-    data.percent = msg.text;
-    data.step = 5;
-
-    return bot.sendMessage(
-      chatId,
-      `✅ CONFIRMA LA ORDEN:
-
-Monto: ${data.min} - ${data.max} COP
-Pago: ${data.payment}
-Tasa: yadio.io +${data.percent}%
-
-Escribe CONFIRMAR para publicar`
-    );
-  }
-
-  // Paso 5: confirmar y publicar
-if (data.step === 5 && msg.text.toLowerCase() === 'confirmar') {
-  sellSteps.delete(chatId);
-
-  const order = {
-    userId: msg.from.id,
-    username: msg.from.username || null,
-    min: data.min,
-    max: data.max,
-    payment: data.payment,
-    percent: data.percent,
-    createdAt: new Date(),
-    type: 'SELL',
-    status: 'OPEN'
-  };
+// ================== FLUJO ==================
+bot.on("message", async (msg) => {
+  const session = sessions[msg.chat.id];
+  if (!session || msg.text.startsWith("/")) return;
 
   try {
-    const db = client.db('p2p');
-    await db.collection('orders').insertOne(order);
+    switch (session.step) {
+      case 1:
+        session.asset = msg.text;
+        session.step = 2;
+        return bot.sendMessage(msg.chat.id, "💰 Monto mínimo (COP)");
 
-    const channelText = `💲💵💲
-Nueva orden de VENTA USDT (Polygon)
-Por ${data.min} - ${data.max} COP 🇨🇴
-1 USD = 3812.55 COP
-Recibir pago por ${data.payment}
+      case 2:
+        session.min = msg.text;
+        session.step = 3;
+        return bot.sendMessage(msg.chat.id, "💰 Monto máximo (COP)");
 
-Tiene 128 operaciones exitosas
-Usa el bot hace 350 días
+      case 3:
+        session.max = msg.text;
+        session.step = 4;
+        return bot.sendMessage(msg.chat.id, "💱 Método de pago (ej: Nequi)");
 
-#SELLCOP
-Tasa: yadio.io +${data.percent}%
-4.9 ⭐⭐⭐⭐⭐ (122)`;
+      case 4:
+        session.payment = msg.text;
+        session.step = 5;
+        return bot.sendMessage(msg.chat.id, "📈 Tasa (ej: yadio.io +2%)");
 
-    await bot.sendMessage(CHANNEL_ID, channelText);
-    return bot.sendMessage(chatId, '✅ Orden guardada y publicada en el canal');
+      case 5:
+        session.rate = msg.text;
+        session.step = 6;
+        return bot.sendMessage(msg.chat.id, "⭐ Reputación (ej: 4.9 ⭐⭐⭐⭐⭐)");
+
+      case 6:
+        session.rep = msg.text;
+
+        const order = {
+          userId: msg.from.id,
+          username: msg.from.username || "sin_user",
+          type: session.type,
+          asset: session.asset,
+          min: session.min,
+          max: session.max,
+          payment: session.payment,
+          rate: session.rate,
+          rep: session.rep,
+          createdAt: new Date()
+        };
+
+        // GUARDAR EN MONGO
+        await orders.insertOne(order);
+
+        // MENSAJE CANAL
+        const text = `
+💲💵💲
+Nueva orden de ${order.type === "SELL" ? "VENTA" : "COMPRA"} ${order.asset}
+Por ${order.min} - ${order.max} COP 🇨🇴
+Pago: ${order.payment}
+Tasa: ${order.rate}
+${order.rep}
+@${order.username}
+        `;
+
+        await bot.sendMessage(process.env.ID_DEL_CANAL, text);
+
+        await bot.sendMessage(msg.chat.id, "✅ Orden publicada y guardada");
+        delete sessions[msg.chat.id];
+        break;
+    }
   } catch (err) {
     console.error(err);
-    return bot.sendMessage(chatId, '❌ Error al guardar la orden');
-  }
-}
-
-    const channelText = `💲💵💲
-Nueva orden de VENTA USDT (Polygon)
-Por ${data.min} - ${data.max} COP 🇨🇴
-1 USD = 3812.55 COP
-Recibir pago por ${data.payment}
-
-Tiene 128 operaciones exitosas
-Usa el bot hace 350 días
-
-#SELLCOP
-Tasa: yadio.io +${data.percent}%
-4.9 ⭐⭐⭐⭐⭐ (122)`;
-
-    try {
-      await bot.sendMessage(CHANNEL_ID, channelText);
-      return bot.sendMessage(chatId, '✅ Orden de venta publicada en el canal');
-    } catch (err) {
-      console.error(err);
-      return bot.sendMessage(chatId, '❌ Error al publicar en el canal');
-    }
+    bot.sendMessage(msg.chat.id, "❌ Error al procesar la orden");
+    delete sessions[msg.chat.id];
   }
 });
 
-/* ======================
-   /BUY (BÁSICO)
-====================== */
-bot.onText(/\/buy/, (msg) => {
-  bot.sendMessage(msg.chat.id, '🟢 Función /buy próximamente');
-});
+console.log("🤖 Bot iniciado");
