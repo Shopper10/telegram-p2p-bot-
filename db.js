@@ -15,7 +15,7 @@ async function connectDB() {
 
   try {
     await client.connect();
-    db = client.db(); // usa la DB por defecto
+    db = client.db(); // base de datos por defecto
     console.log("🟢 Conectado a MongoDB");
     return db;
   } catch (err) {
@@ -24,4 +24,9 @@ async function connectDB() {
   }
 }
 
+// EXPORTA LA FUNCIÓN
 module.exports = { connectDB };
+
+// 🔥 ESTO ES LO QUE FALTABA
+// Conecta automáticamente al arrancar el bot
+connectDB();
