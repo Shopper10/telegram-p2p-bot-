@@ -1,5 +1,5 @@
 const { MongoClient } = require("mongodb");
-
+console.log("🔥 db.js cargado");
 const uri = process.env.MONGODB_URI;
 
 if (!uri) {
