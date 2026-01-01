@@ -21,6 +21,35 @@ const orders = db.collection("orders");
 const sessions = {};
 
 // ================== HELP ==================
+bot.onText(/\/orders/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  const list = await orders
+    .find({})
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .toArray();
+
+  if (list.length === 0) {
+    return bot.sendMessage(chatId, "📭 No hay órdenes activas");
+  }
+
+  let text = "📋 *Órdenes activas:*\n\n";
+
+  list.forEach((o, i) => {
+    text +=
+`#${i + 1}
+${o.type === "SELL" ? "🟥 VENTA" : "🟩 COMPRA"} ${o.asset}
+💰 ${o.min} - ${o.max} COP
+💳 ${o.payment}
+📈 ${o.rate}
+👤 @${o.username}
+
+`;
+  });
+
+  bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
+});
 bot.onText(/\/start|\/help/, (msg) => {
   bot.sendMessage(
     msg.chat.id,
