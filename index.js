@@ -123,7 +123,8 @@ bot.on("message", async (msg) => {
         rate: s.rate,
         rep: s.rep,
         status: "open",
-        createdAt: new Date()
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 minutos
       };
 
       // GUARDAR Y OBTENER ID
@@ -139,7 +140,7 @@ Nueva orden de ${order.type === "SELL" ? "VENTA" : "COMPRA"} ${order.asset}
 ${order.rep}
 👤 @${order.username}`;
 
-      await bot.sendMessage(process.env.ID_DEL_CANAL, text, {
+      const sent = await bot.sendMessage(process.env.ID_DEL_CANAL, text, {
         reply_markup: {
           inline_keyboard: [[
             { text: "🤝 Aceptar", callback_data: `accept_${order._id}` },
@@ -147,6 +148,12 @@ ${order.rep}
           ]]
         }
       });
+
+      // guardar message_id del canal
+      await orders.updateOne(
+        { _id: order._id },
+        { $set: { messageId: sent.message_id } }
+      );
 
       await bot.sendMessage(msg.chat.id, "✅ Orden publicada");
       delete sessions[msg.chat.id];
@@ -204,5 +211,36 @@ bot.on("callback_query", async (q) => {
     return bot.answerCallbackQuery(q.id, { text: "❌ Orden cancelada" });
   }
 });
+
+// ========= EXPIRACIÓN AUTOMÁTICA =========
+setInterval(async () => {
+  const now = new Date();
+
+  const expired = await orders.find({
+    status: "open",
+    expiresAt: { $lte: now }
+  }).toArray();
+
+  for (const order of expired) {
+    await orders.updateOne(
+      { _id: order._id },
+      { $set: { status: "expired" } }
+    );
+
+    if (order.messageId) {
+      try {
+        await bot.editMessageReplyMarkup(
+          { inline_keyboard: [] },
+          {
+            chat_id: process.env.ID_DEL_CANAL,
+            message_id: order.messageId
+          }
+        );
+      } catch (e) {
+        console.log("No se pudo limpiar botones", order._id.toString());
+      }
+    }
+  }
+}, 60 * 1000); // cada 1 minuto
 
 console.log("🤖 Bot iniciado");
