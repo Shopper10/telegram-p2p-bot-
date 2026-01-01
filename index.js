@@ -124,6 +124,19 @@ bot.on("message", async (msg) => {
 
         // GUARDAR EN MONGO
         await orders.insertOne(order);
+        const order = {
+  userId: msg.from.id,
+  username: msg.from.username || "sin_user",
+  type: session.type,
+  asset: session.asset,
+  min: session.min,
+  max: session.max,
+  payment: session.payment,
+  rate: session.rate,
+  rep: session.rep,
+  status: "open",
+  createdAt: new Date()
+};
 
         // MENSAJE CANAL
         const text = `
