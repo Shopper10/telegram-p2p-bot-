@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { createOrder } = require("./orders.model");
 const bot = require("./bot");
 const { publishToChannel } = require("./channel");
 
@@ -49,10 +50,22 @@ bot.on("message", async (msg) => {
   if (o.step === 5) {
     o.price = msg.text;
 
-    const orderId = crypto.randomUUID();
-    const username = o.user.username ? `@${o.user.username}` : "Sin username";
+const orderId = await createOrder({
+  type: "SELL",
+  userId: o.user.id,
+  username: o.user.username || null,
+  min: o.min,
+  max: o.max,
+  payment: o.payment,
+  rate: o.rate,
+  price: o.price
+});
 
-    const post =
+const username = o.user.username
+  ? `@${o.user.username}`
+  : "Sin username";
+
+const post =
 `💲💵💲
 Nueva orden de venta USDT (Polygon)
 
@@ -66,9 +79,7 @@ Nueva orden de venta USDT (Polygon)
 #SELLCOP
 🆔 ${orderId}`;
 
-    await publishToChannel(post);
-    await bot.sendMessage(chatId, "✅ Orden publicada en el canal");
+await publishToChannel(post);
+await bot.sendMessage(chatId, "✅ Orden publicada en el canal");
 
-    delete sellOrders[chatId];
-  }
-});
+delete sellOrders[chatId];
