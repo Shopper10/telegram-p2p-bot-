@@ -109,8 +109,45 @@ Escribe CONFIRMAR para publicar`
   }
 
   // Paso 5: confirmar y publicar
-  if (data.step === 5 && msg.text.toLowerCase() === 'confirmar') {
-    sellSteps.delete(chatId);
+if (data.step === 5 && msg.text.toLowerCase() === 'confirmar') {
+  sellSteps.delete(chatId);
+
+  const order = {
+    userId: msg.from.id,
+    username: msg.from.username || null,
+    min: data.min,
+    max: data.max,
+    payment: data.payment,
+    percent: data.percent,
+    createdAt: new Date(),
+    type: 'SELL',
+    status: 'OPEN'
+  };
+
+  try {
+    const db = client.db('p2p');
+    await db.collection('orders').insertOne(order);
+
+    const channelText = `💲💵💲
+Nueva orden de VENTA USDT (Polygon)
+Por ${data.min} - ${data.max} COP 🇨🇴
+1 USD = 3812.55 COP
+Recibir pago por ${data.payment}
+
+Tiene 128 operaciones exitosas
+Usa el bot hace 350 días
+
+#SELLCOP
+Tasa: yadio.io +${data.percent}%
+4.9 ⭐⭐⭐⭐⭐ (122)`;
+
+    await bot.sendMessage(CHANNEL_ID, channelText);
+    return bot.sendMessage(chatId, '✅ Orden guardada y publicada en el canal');
+  } catch (err) {
+    console.error(err);
+    return bot.sendMessage(chatId, '❌ Error al guardar la orden');
+  }
+}
 
     const channelText = `💲💵💲
 Nueva orden de VENTA USDT (Polygon)
